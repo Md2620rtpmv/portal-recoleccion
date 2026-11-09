@@ -344,7 +344,7 @@ tr.row:hover td{background:var(--panel-2)}
 
 <script>
 /* ================= DATOS ================= */
-const ROLE_LABEL = {ADMIN:'Admin · edita todo', SAC:'SAC · confirma y edita recolecciones', IT:'IT · mismos permisos que SAC', AUXSAC:'AUXSAC · solo lectura', ALMACEN:'Almacén · calendario del día', DIST:'Distribuidor'};
+const ROLE_LABEL = {ADMIN:'Admin · edita todo', SAC:'SAC · confirma y edita recolecciones', IT:'IT · permisos de SAC y alta de usuarios', AUXSAC:'AUXSAC · solo lectura', ALMACEN:'Almacén · calendario del día', DIST:'Distribuidor'};
 const ESTADOS = {Pendiente:'Pendiente confirmar', Aceptado:'Aceptado', OK:'OK', Cancelado:'Cancelado', NoLlego:'No llegó'};
 const CERRADOS = ['OK','Cancelado','NoLlego'];      // estados finales
 const ACTIVOS = ['Pendiente','Aceptado'];           // estados que ocupan horario
@@ -371,7 +371,7 @@ function toRow(d){ const o={}; for(const k in d){ if(k==='id'||k==='creado'||k==
 function fromRow(r){ const o={}; for(const k in r) o[COLS_INV[k]||k]=r[k]; o.creado=(r.creado||'').slice(0,10); return o; }
 
 async function cargarUsuarios(){
-  if(ME.role==='ADMIN'){
+  if(gestionaUsuarios()){
     const {data,error}=await sb.from('perfiles').select('*').order('rol').order('nombre');
     if(error) console.warn(error); USERS=(data||[]).map(u=>({...u, uid:u.id, name:u.nombre, role:u.rol, u:u.usuario}));
   } else {
@@ -400,7 +400,7 @@ async function startSubs(){
   await cargarUsuarios(); await cargarDispo(); await cargarRecs();
   channel=sb.channel('portal')
     .on('postgres_changes',{event:'*',schema:'public',table:'recolecciones'},()=>refrescar())
-    .on('postgres_changes',{event:'*',schema:'public',table:'perfiles'},async()=>{ await cargarUsuarios(); if(ME&&ME.role==='ADMIN'&&INT.tab==='users') render(); })
+    .on('postgres_changes',{event:'*',schema:'public',table:'perfiles'},async()=>{ await cargarUsuarios(); if(ME&&gestionaUsuarios()&&INT.tab==='users') render(); })
     .subscribe();
   // Los distribuidores no reciben cambios de recolecciones ajenas: refrescan disponibilidad periódicamente
   dispoTimer=setInterval(cargarDispo, 30000);
@@ -479,6 +479,7 @@ else sb.auth.onAuthStateChange((event, session)=>{
 document.getElementById('p').addEventListener('keydown',e=>{ if(e.key==='Enter') login(); });
 
 /* ================= PERMISOS ================= */
+function gestionaUsuarios(){ return !!ME && (ME.role==='ADMIN' || ME.rolReal==='IT'); }
 /* can(r, campo, ...) → qué puede editar cada rol sobre una recolección existente */
 function can(field, rec){
   if(!ME) return false;
@@ -543,7 +544,7 @@ function renderInterno(main){
       <button type="button" class="${INT.tab==='cal'?'on':''}" onclick="INT.tab='cal';render()">Calendario</button>
       <button type="button" class="${INT.tab==='list'?'on':''}" onclick="INT.tab='list';render()">Listado a detalle</button>
       ${['ADMIN','SAC','AUXSAC'].includes(ME.role)?`<button type="button" style="margin-left:auto;border:none;color:var(--navy-deep)" onclick="openNew()">+ Nueva recolección</button>`:''}
-      ${ME.role==='ADMIN'?`<button type="button" class="${INT.tab==='users'?'on':''}" onclick="INT.tab='users';render()">Usuarios</button>`:''}
+      ${gestionaUsuarios()?`<button type="button" class="${INT.tab==='users'?'on':''}" onclick="INT.tab='users';render()">Usuarios</button>`:''}
     </div>
     <div id="intBody"></div>`;
   const body=document.getElementById('intBody');
@@ -560,7 +561,7 @@ function renderUsers(host){
       <div class="tbl-wrap"><table><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Correo de contacto</th><th>Estado</th><th></th></tr></thead><tbody>
       ${list.map(u=>`<tr><td><b>${esc(u.usuario||'')}</b></td><td>${esc(u.nombre)}</td><td><span class="tag role-${(u.rol||'').toLowerCase()}">${esc(u.rol)}</span></td><td>${esc(u.correo||'')}</td>
         <td>${u.activo===false?'<span class="st Cancelado">Desactivado</span>':'<span class="st OK">Activo</span>'}</td>
-        <td style="white-space:nowrap"><button class="btn ghost small" onclick="editUser('${u.uid}')">Editar</button> ${u.uid!==ME.uid?`<button class="btn ghost small" onclick="toggleUser('${u.uid}',${u.activo===false})">${u.activo===false?'Activar':'Desactivar'}</button>`:''}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Sin usuarios.</td></tr>'}
+        <td style="white-space:nowrap">${(u.rol==='ADMIN'&&ME.role!=='ADMIN')?'':`<button class="btn ghost small" onclick="editUser('${u.uid}')">Editar</button>`} ${u.uid!==ME.uid&&!(u.rol==='ADMIN'&&ME.role!=='ADMIN')?`<button class="btn ghost small" onclick="toggleUser('${u.uid}',${u.activo===false})">${u.activo===false?'Activar':'Desactivar'}</button>`:''}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Sin usuarios.</td></tr>'}
       </tbody></table></div>
     </div>
     <aside class="side"><div class="card" id="userForm"></div></aside></div>`;
@@ -568,7 +569,7 @@ function renderUsers(host){
 }
 function drawUserForm(u){
   const f=document.getElementById('userForm'); if(!f) return;
-  const roles=['DIST','SAC','IT','AUXSAC','ALMACEN','ADMIN'];
+  const roles=ME.role==='ADMIN'?['DIST','SAC','IT','AUXSAC','ALMACEN','ADMIN']:['DIST','SAC','IT','AUXSAC','ALMACEN'];
   f.innerHTML=`<h3>${u?'Editar usuario':'Nuevo usuario'}</h3>
     <div class="field"><label>Usuario (para entrar) <span class="req">*</span></label><input id="nu_user" value="${esc(u?u.usuario:'')}" ${u?'disabled':''} placeholder="ej. sanimax" autocapitalize="none"></div>
     <div class="field"><label>Nombre a mostrar <span class="req">*</span></label><input id="nu_name" value="${esc(u?u.nombre:'')}" placeholder="ej. SANIMAX"></div>
