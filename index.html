@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 /* =====================================================================
    CONFIGURACIÓN DE SUPABASE
@@ -300,6 +301,17 @@ tr.row:hover td{background:var(--panel-2)}
 @media print{body{background:#fff}.rem-bg{position:static;padding:0;background:#fff}.rem{box-shadow:none;max-width:none;padding:10px 0}.rem-actions,#app,#login{display:none!important}.rem .sig canvas{border:none;background:transparent}.rem .sig .cl{display:none}}
 .rem-badge{display:inline-flex;gap:6px;align-items:center;background:#d6efe0;color:#0f3d24;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:600}
 
+/* ---------- almacenamiento ---------- */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
+.kpi{background:var(--panel-2);border:1.5px solid var(--line-soft);border-radius:10px;padding:12px 14px}
+.kpi b{display:block;font-size:22px;color:var(--navy)}
+.kpi span{font-size:12px;color:var(--ink-soft)}
+.bar{height:10px;background:var(--muted);border-radius:999px;overflow:hidden;margin:6px 0 2px}
+.bar i{display:block;height:100%;background:var(--navy-deep)}
+.bar.warn i{background:#e2b94a}.bar.full i{background:#e04b3a}
+.meses tr td:first-child{font-weight:600;color:var(--navy)}
+.prog{font-size:13px;color:var(--ink-soft);margin-top:8px;min-height:18px}
+
 /* ---------- modal ---------- */
 .modal-bg{position:fixed;inset:0;background:rgba(12,47,102,.45);display:grid;place-items:center;padding:16px;z-index:20;overflow:auto}
 .modal{background:var(--bg);border-radius:14px;width:min(1040px,100%);max-height:92vh;overflow:auto;padding:22px}
@@ -544,11 +556,11 @@ function renderInterno(main){
       <button type="button" class="${INT.tab==='cal'?'on':''}" onclick="INT.tab='cal';render()">Calendario</button>
       <button type="button" class="${INT.tab==='list'?'on':''}" onclick="INT.tab='list';render()">Listado a detalle</button>
       ${['ADMIN','SAC','AUXSAC'].includes(ME.role)?`<button type="button" style="margin-left:auto;border:none;color:var(--navy-deep)" onclick="openNew()">+ Nueva recolección</button>`:''}
-      ${gestionaUsuarios()?`<button type="button" class="${INT.tab==='users'?'on':''}" onclick="INT.tab='users';render()">Usuarios</button>`:''}
+      ${gestionaUsuarios()?`<button type="button" class="${INT.tab==='users'?'on':''}" onclick="INT.tab='users';render()">Usuarios</button><button type="button" class="${INT.tab==='storage'?'on':''}" onclick="INT.tab='storage';render()">Almacenamiento y respaldo</button>`:''}
     </div>
     <div id="intBody"></div>`;
   const body=document.getElementById('intBody');
-  if(INT.tab==='cal') renderIntCal(body); else if(INT.tab==='users') renderUsers(body); else renderIntList(body);
+  if(INT.tab==='cal') renderIntCal(body); else if(INT.tab==='users') renderUsers(body); else if(INT.tab==='storage') renderStorage(body); else renderIntList(body);
 }
 /* ---- Usuarios (solo Admin) ---- */
 function renderUsers(host){
@@ -787,6 +799,125 @@ function drawAlm(){
   document.getElementById('almDay').innerHTML=`<h3 style="margin:0 0 12px;color:var(--navy);font-size:18px">${DIAS[sd.getDay()]} ${sd.getDate()} de ${MESES[sd.getMonth()]}</h3>`+recList(recsOf(ALM.sel),'Sin recolecciones este día.');
 }
 
+/* ================= ALMACENAMIENTO Y RESPALDO ================= */
+const LIMITE_STORAGE_MB = 1024; // plan gratuito de Supabase: 1 GB de archivos
+function mb(b){ return (b/1048576).toFixed(1)+' MB'; }
+function archivosVivos(r){ return (r.archivos||[]).filter(a=>a.path && !a.purgado); }
+function statsStorage(){
+  const porMes={}; let total=0, n=0;
+  DB.forEach(r=>{ const m=(r.fecha||'').slice(0,7); const vivos=archivosVivos(r); const bytes=vivos.reduce((a,x)=>a+(x.size||0),0);
+    const o=porMes[m]=porMes[m]||{mes:m, recs:0, cerradas:0, archivos:0, bytes:0, depurables:0};
+    o.recs++; if(CERRADOS.includes(r.estado)) o.cerradas++; o.archivos+=vivos.length; o.bytes+=bytes; if(CERRADOS.includes(r.estado)) o.depurables+=vivos.length;
+    total+=bytes; n+=vivos.length; });
+  return {total, n, meses:Object.values(porMes).sort((a,b)=>b.mes.localeCompare(a.mes))};
+}
+function renderStorage(host){
+  const st=statsStorage(); const pct=Math.min(100, st.total/1048576/LIMITE_STORAGE_MB*100);
+  const cls=pct>90?'full':pct>70?'warn':'';
+  const mesTxt=m=>{ const [y,mm]=m.split('-'); return `${MESES[Number(mm)-1]} ${y}`; };
+  host.innerHTML=`<div class="card">
+    <h3 style="margin:0 0 4px;color:var(--navy)">Uso de almacenamiento de documentos</h3>
+    <p class="section-sub">Cálculo a partir de los archivos registrados en el portal. El dato oficial está en Supabase → Project Settings → Usage.</p>
+    <div class="kpis">
+      <div class="kpi"><b>${mb(st.total)}</b><span>de ${LIMITE_STORAGE_MB/1024} GB del plan gratuito (${pct.toFixed(0)}%)</span><div class="bar ${cls}"><i style="width:${pct}%"></i></div></div>
+      <div class="kpi"><b>${st.n}</b><span>documentos en línea</span></div>
+      <div class="kpi"><b>${DB.length}</b><span>recolecciones registradas</span></div>
+    </div>
+    ${pct>70?`<div class="alert" style="margin-bottom:16px"><span>⚠️</span><div><b>Conviene respaldar y depurar.</b> Descarga el respaldo de los meses cerrados y luego depura sus documentos para liberar espacio.</div></div>`:''}
+    <div class="btn-row" style="margin-bottom:8px">
+      <button class="btn ghost" onclick="exportarExcel()">Descargar Excel de todas las recolecciones</button>
+      <button class="btn ghost" onclick="exportarJSON()">Descargar respaldo completo (JSON, incluye firmas)</button>
+    </div>
+    <div class="prog" id="stProg"></div>
+  </div>
+  <div class="card">
+    <h3 style="margin:0 0 4px;color:var(--navy)">Respaldo y depuración por mes</h3>
+    <p class="section-sub">1) Descarga el ZIP del mes y guárdalo en el servidor o nube de la empresa. 2) Verifica que abrió bien. 3) Depura: borra de Supabase los documentos de las recolecciones ya cerradas (OK, Cancelado, No llegó) de ese mes. La recolección, su remisión y firmas se conservan en el portal.</p>
+    <div class="tbl-wrap"><table class="meses"><thead><tr><th>Mes</th><th>Recolecciones</th><th>Cerradas</th><th>Documentos</th><th>Espacio</th><th></th></tr></thead><tbody>
+      ${st.meses.map(m=>`<tr><td>${mesTxt(m.mes)}</td><td>${m.recs}</td><td>${m.cerradas}</td><td>${m.archivos}</td><td>${mb(m.bytes)}</td>
+        <td style="white-space:nowrap"><button class="btn small" onclick="descargarZipMes('${m.mes}')" ${m.archivos?'':'disabled'}>Descargar ZIP</button>
+        <button class="btn ghost small" style="border-color:var(--danger);color:var(--danger)" onclick="depurarMes('${m.mes}')" ${m.depurables?'':'disabled'}>Depurar (${m.depurables})</button></td></tr>`).join('')||'<tr><td colspan="6" class="empty">Sin recolecciones.</td></tr>'}
+    </tbody></table></div>
+  </div>`;
+}
+function prog(t){ const e=document.getElementById('stProg'); if(e) e.textContent=t; }
+function descargarBlob(blob, nombre){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=nombre; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},1000); }
+function filaPlano(r){
+  return {Fecha:fmtDMY(r.fecha), Hora:fmt12(r.hora), Distribuidor:r.dist, Estado:estLabel(r.estado), 'Paquetería / Entregar a':r.paq, 'No. guía':r.guia,
+    Proyectos:(r.proyectos||[]).map(p=>`${p.linea} | Exp ${p.exp} | Int ${p.int} | ${p.obra}`).join(' ; '),
+    'Saldo pendiente':r.saldo==='si'?'Sí':r.saldo==='no'?'No':'', 'Monto saldo':r.saldoMonto||'', 'Comentarios SAC':r.comentarios||'',
+    Detalles:(r.detalles||[]).map(d=>`${d.linea} | Tarima ${d.tarima} | Peso ${d.peso} | Caja ${d.caja} | Paq ${d.paquetes}`).join(' ; '),
+    'Entrega':r.entrega||'', 'Recibe':r.recibe||'', 'Folio remisión':r.remision?r.remision.folio:'', 'Fecha remisión':r.remision?r.remision.fecha:'',
+    Documentos:(r.archivos||[]).map(a=>a.name+(a.purgado?' (depurado)':'')).join(' ; '), Creado:r.creado||''};
+}
+function exportarExcel(){
+  const rows=[...DB].sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora)).map(filaPlano);
+  if(!rows.length){ toast('No hay recolecciones.'); return; }
+  const cols=Object.keys(rows[0]); const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  const csv='\ufeff'+cols.join(';')+'\n'+rows.map(r=>cols.map(c=>q(r[c])).join(';')).join('\n');
+  descargarBlob(new Blob([csv],{type:'text/csv;charset=utf-8'}), `recolecciones_${iso(new Date())}.csv`); toast('Excel (CSV) descargado');
+}
+function exportarJSON(){
+  descargarBlob(new Blob([JSON.stringify({exportado:new Date().toISOString(), usuarios:USERS.map(u=>({usuario:u.usuario,nombre:u.nombre,rol:u.rol,correo:u.correo,activo:u.activo})), recolecciones:DB},null,1)],{type:'application/json'}), `respaldo_portal_${iso(new Date())}.json`);
+  toast('Respaldo JSON descargado');
+}
+function nombreSeguro(t){ return String(t||'').replace(/[\\/:*?"<>|]+/g,'_').trim(); }
+async function descargarZipMes(mes){
+  if(typeof JSZip==='undefined'){ toast('No se pudo cargar el compresor. Revisa tu conexión.'); return; }
+  const recs=DB.filter(r=>(r.fecha||'').startsWith(mes)); const zip=new JSZip(); let n=0, fallos=0;
+  const total=recs.reduce((a,r)=>a+archivosVivos(r).length,0);
+  for(const r of recs){
+    const carpeta=`${mes}/${nombreSeguro(r.dist)}/${r.fecha}_${r.hora.replace(':','')}_${r.remision?('REM'+r.remision.folio):r.id.slice(0,6)}`;
+    zip.file(`${carpeta}/recoleccion.json`, JSON.stringify(r,null,1));
+    if(r.remision){ zip.file(`${carpeta}/remision_${r.remision.folio}.html`, remisionHTML(r)); }
+    for(const a of archivosVivos(r)){
+      prog(`Descargando ${++n} de ${total}: ${a.name}`);
+      const {data,error}=await sb.storage.from('documentos').download(a.path);
+      if(error||!data){ fallos++; continue; }
+      zip.file(`${carpeta}/${nombreSeguro(a.name)}`, data);
+    }
+  }
+  prog('Comprimiendo…');
+  const blob=await zip.generateAsync({type:'blob'});
+  descargarBlob(blob, `respaldo_recolecciones_${mes}.zip`);
+  prog(''); toast(fallos?`ZIP descargado con ${fallos} archivo(s) no encontrados`:'ZIP descargado. Guárdalo antes de depurar.');
+}
+function remisionHTML(r){
+  const u=USERS.find(x=>x.uid===r.distUid)||{};
+  const fila=(k,v)=>`<tr><td style="font-weight:700;text-align:center;width:40%">${esc(k)}</td><td>${esc(v)}</td></tr>`;
+  return `<!doctype html><html lang="es"><meta charset="utf-8"><title>Remisión ${r.remision.folio}</title>
+  <body style="font-family:Arial;max-width:860px;margin:auto;padding:30px;color:#1f2937">
+  <h1 style="text-align:center;color:#0f2744">Resumen de datos - Distribuidor ${esc(r.dist)} - ID ${r.remision.folio}</h1>
+  <table border="1" cellspacing="0" cellpadding="8" style="width:100%;border-collapse:collapse;border-color:#cfd4dc"><tr><th colspan="2">Datos de Recolección</th></tr>
+  ${fila('DISTRIBUIDOR',r.dist)}${fila('CORREO',u.correo||'')}${fila('PERSONA',r.paq)}${fila('GUIA',r.guia||'—')}
+  ${fila('PROYECTOS',(r.proyectos||[]).map(p=>`Linea: ${p.linea}, Exp: ${p.exp}, Int: ${p.int}, Obra: ${p.obra}`).join(' '))}
+  ${fila('FECHA RECOLECCION',fmtDMY(r.fecha)+' '+fmt12(r.hora))}</table>
+  <h2 style="text-align:center;color:#0f2744">Detalles del Proyecto</h2>
+  <table border="1" cellspacing="0" cellpadding="8" style="width:100%;border-collapse:collapse;border-color:#cfd4dc;font-size:13px"><tr><th>LINEA</th><th>EXP</th><th>INT</th><th>OBRA</th><th>TARIMA</th><th>PESO</th><th>CAJA</th><th>PAQUETES</th></tr>
+  ${(r.detalles||[]).map(d=>`<tr><td>${esc(d.linea)}</td><td>${esc(d.exp)}</td><td>${esc(d.int)}</td><td>${esc(d.obra)}</td><td>${esc(d.tarima)}</td><td>${esc(d.peso)}</td><td>${esc(d.caja)}</td><td>${esc(d.paquetes)}</td></tr>`).join('')}</table>
+  <div style="display:flex;gap:40px;margin-top:40px"><div style="flex:1;text-align:center"><img src="${r.remision.firmas.recibe}" style="height:120px"><div style="border-bottom:3px solid #111;font-weight:600">${esc(r.recibe)}</div>Nombre y firma de quien recibe</div>
+  <div style="flex:1;text-align:center"><img src="${r.remision.firmas.entrega}" style="height:120px"><div style="border-bottom:3px solid #111;font-weight:600">${esc(r.entrega)}</div>Nombre y firma Empleado Modumex</div></div>
+  <p style="text-align:center;margin-top:40px;font-size:12px"><b>*** Al firmar se acepta que el pedido está correcto. ***</b><br>Grupo Modumex S.A. de C.V.<br>${esc(r.remision.fecha)} ${esc(r.remision.hora||'')}</p></body></html>`;
+}
+async function depurarMes(mes){
+  const recs=DB.filter(r=>(r.fecha||'').startsWith(mes) && CERRADOS.includes(r.estado) && archivosVivos(r).length);
+  const total=recs.reduce((a,r)=>a+archivosVivos(r).length,0); if(!total){ toast('Nada que depurar en ese mes.'); return; }
+  if(!confirm(`Se borrarán de Supabase ${total} documento(s) de ${recs.length} recolección(es) cerradas de ${mes}.\n\n¿Ya descargaste y guardaste el ZIP de ese mes? Esta acción no se puede deshacer.`)) return;
+  if(prompt('Para confirmar escribe: DEPURAR')!=='DEPURAR'){ toast('Depuración cancelada.'); return; }
+  let borrados=0, errores=0;
+  for(const r of recs){
+    const paths=archivosVivos(r).map(a=>a.path);
+    prog(`Depurando ${r.dist} ${fmtDMY(r.fecha)}…`);
+    const {error}=await sb.storage.from('documentos').remove(paths);
+    if(error){ errores++; console.error(error); continue; }
+    const archivos=(r.archivos||[]).map(a=>a.path?({name:a.name,size:a.size||0,path:'',purgado:true,depuradoEl:iso(new Date())}):a);
+    const {error:e2}=await sb.from('recolecciones').update({archivos}).eq('id',r.id);
+    if(e2){ errores++; console.error(e2); continue; }
+    borrados+=paths.length;
+  }
+  prog(''); await cargarRecs(); toast(`Depuración terminada: ${borrados} documento(s) liberados${errores?`, ${errores} con error`:''}`);
+}
+
 /* ================= FORMULARIO ================= */
 let FORM = null; // estado del formulario activo
 function blank(){ const t=new Date(); return {dist: ME.role==='DIST'?ME.name:'', distUid: ME.role==='DIST'?ME.uid:'', paq:'', guia:'', fecha:iso(t), hora:'', estado:'Pendiente', comentarios:'', saldo:'', saldoMonto:'', detalles:[], entrega:'', recibe:'', remision:null, proyectos:[{linea:'',exp:'',int:'',obra:''}], archivos:[], cal:{y:t.getFullYear(), m:t.getMonth()}}; }
@@ -837,7 +968,7 @@ function drawForm(){
         <div><b style="color:var(--navy)">Cargar archivos</b> o arrástralos aquí</div>
         <div style="font-size:12px;margin-top:4px">PDF, imágenes, Excel, Word · varios archivos permitidos</div>
       </label>`:''}
-    <ul class="files">${f.archivos.length? f.archivos.map((a,i)=>`<li><span>📄</span><span class="nm">${a.path?`<a href="#" onclick="event.preventDefault();abrirArchivo('${esc(a.path)}')" style="color:var(--navy)">${esc(a.name)}</a>`:esc(a.name)}${a.file?' <small style="color:var(--ink-soft)">(por subir)</small>':''}</span>${typeof a==='object'&&a.size?`<span class="sz">${(a.size/1024).toFixed(0)} KB</span>`:''}${!ro('archivos')?`<button type="button" title="Quitar" onclick="FORM.archivos.splice(${i},1);drawForm()">×</button>`:''}</li>`).join('') : `<li style="color:var(--ink-soft)">Sin documentos adjuntos.</li>`}</ul>
+    <ul class="files">${f.archivos.length? f.archivos.map((a,i)=>`<li><span>📄</span><span class="nm">${a.path?`<a href="#" onclick="event.preventDefault();abrirArchivo('${esc(a.path)}')" style="color:var(--navy)">${esc(a.name)}</a>`:esc(a.name)}${a.purgado?` <small style="color:var(--ink-soft)">(depurado el ${esc(a.depuradoEl||'')} · en respaldo)</small>`:''}${a.file?' <small style="color:var(--ink-soft)">(por subir)</small>':''}</span>${typeof a==='object'&&a.size?`<span class="sz">${(a.size/1024).toFixed(0)} KB</span>`:''}${!ro('archivos')?`<button type="button" title="Quitar" onclick="FORM.archivos.splice(${i},1);drawForm()">×</button>`:''}</li>`).join('') : `<li style="color:var(--ink-soft)">Sin documentos adjuntos.</li>`}</ul>
 
     ${!f._isNew && (ME.role!=='DIST' || f.comentarios) ? `
     <div class="cal-label" style="font-size:16px">Datos SAC</div>
