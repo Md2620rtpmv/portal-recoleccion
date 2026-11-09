@@ -77,6 +77,7 @@ input,select,textarea{font:inherit;color:var(--ink)}
 .tag{display:inline-block;background:rgba(255,255,255,.18);border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600}
 .tag.role-admin{background:#f3c969;color:#4d3300}
 .tag.role-sac{background:#9ad5b1;color:#0f3d24}
+.tag.role-it{background:#9ad5b1;color:#0f3d24}
 .tag.role-auxsac{background:#c9d4e6;color:#1b2f52}
 .tag.role-dist{background:#bcd0ee;color:#0c2f66}
 .topbar .btn{border-color:rgba(255,255,255,.6);background:transparent;color:#fff;padding:7px 12px;font-size:13px}
@@ -343,7 +344,7 @@ tr.row:hover td{background:var(--panel-2)}
 
 <script>
 /* ================= DATOS ================= */
-const ROLE_LABEL = {ADMIN:'Admin · edita todo', SAC:'SAC · guías y paqueterías', AUXSAC:'AUXSAC · solo lectura', ALMACEN:'Almacén · calendario del día', DIST:'Distribuidor'};
+const ROLE_LABEL = {ADMIN:'Admin · edita todo', SAC:'SAC · confirma y edita recolecciones', IT:'IT · mismos permisos que SAC', AUXSAC:'AUXSAC · solo lectura', ALMACEN:'Almacén · calendario del día', DIST:'Distribuidor'};
 const ESTADOS = {Pendiente:'Pendiente confirmar', Aceptado:'Aceptado', OK:'OK', Cancelado:'Cancelado', NoLlego:'No llegó'};
 const CERRADOS = ['OK','Cancelado','NoLlego'];      // estados finales
 const ACTIVOS = ['Pendiente','Aceptado'];           // estados que ocupan horario
@@ -461,12 +462,12 @@ async function entrar(user){
     if(error) throw error;
     if(!x){ await sb.auth.signOut(); showLogin('Tu cuenta existe pero no tiene perfil en el portal. Pide al administrador que te dé de alta.'); return; }
     if(x.activo===false){ await sb.auth.signOut(); showLogin('Tu usuario está desactivado. Contacta al administrador.'); return; }
-    ME={uid:user.id, email:user.email, name:x.nombre, role:x.rol, u:x.usuario, contacto:x.correo||''};
+    ME={uid:user.id, email:user.email, name:x.nombre, role:x.rol==='IT'?'SAC':x.rol, rolReal:x.rol, u:x.usuario, contacto:x.correo||''};
   }catch(e){ await sb.auth.signOut(); showLogin(errMsg(e)); return; }
   document.getElementById('loginErr').textContent='';
   document.getElementById('login').classList.add('hidden'); document.getElementById('app').classList.remove('hidden');
   document.getElementById('whoName').textContent=ME.name;
-  const r=document.getElementById('whoRole'); r.textContent=ROLE_LABEL[ME.role]; r.className='tag role-'+ME.role.toLowerCase();
+  const r=document.getElementById('whoRole'); r.textContent=ROLE_LABEL[ME.rolReal]; r.className='tag role-'+ME.role.toLowerCase();
   document.getElementById('main').innerHTML='<div class="empty">Cargando…</div>';
   DTAB='form'; INT.tab='cal'; startSubs();
 }
@@ -482,8 +483,8 @@ document.getElementById('p').addEventListener('keydown',e=>{ if(e.key==='Enter')
 function can(field, rec){
   if(!ME) return false;
   if(ME.role==='ADMIN') return true;
-  if(ME.role==='SAC') return ['paq','guia','fecha','comentarios','saldo'].includes(field);
-  if(ME.role==='AUXSAC') return false;
+  if(ME.role==='SAC') return !rec || ['paq','guia','fecha','comentarios','saldo'].includes(field);
+  if(ME.role==='AUXSAC') return !rec;
   if(ME.role==='ALMACEN') return field==='detalles' && rec && rec.estado==='Aceptado';
   if(ME.role==='DIST') return rec ? (rec.distUid===ME.uid && rec.estado==='Pendiente') : true;
   return false;
@@ -537,10 +538,11 @@ let INT = {tab:'cal', y:new Date().getFullYear(), m:new Date().getMonth(), sel:i
 function renderInterno(main){
   main.innerHTML=`
     <h2 class="section-title">Recolecciones</h2>
-    <p class="section-sub">${ME.role==='ADMIN'?'Puedes editar cualquier campo y cancelar o eliminar recolecciones.':ME.role==='SAC'?'Confirma las solicitudes pendientes (indicando el saldo pendiente) y edita guía, paquetería, fecha y comentarios.':'Solo consulta. No puedes modificar información.'}</p>
+    <p class="section-sub">${ME.role==='ADMIN'?'Puedes editar cualquier campo y cancelar o eliminar recolecciones.':ME.role==='SAC'?'Confirma las solicitudes pendientes (indicando el saldo pendiente), edita guía, paquetería, fecha y comentarios, y puedes generar recolecciones a nombre de un distribuidor.':'Consulta y puedes generar recolecciones a nombre de un distribuidor; no editas las existentes.'}</p>
     <div class="tabs">
       <button type="button" class="${INT.tab==='cal'?'on':''}" onclick="INT.tab='cal';render()">Calendario</button>
       <button type="button" class="${INT.tab==='list'?'on':''}" onclick="INT.tab='list';render()">Listado a detalle</button>
+      ${['ADMIN','SAC','AUXSAC'].includes(ME.role)?`<button type="button" style="margin-left:auto;border:none;color:var(--navy-deep)" onclick="openNew()">+ Nueva recolección</button>`:''}
       ${ME.role==='ADMIN'?`<button type="button" class="${INT.tab==='users'?'on':''}" onclick="INT.tab='users';render()">Usuarios</button>`:''}
     </div>
     <div id="intBody"></div>`;
@@ -566,7 +568,7 @@ function renderUsers(host){
 }
 function drawUserForm(u){
   const f=document.getElementById('userForm'); if(!f) return;
-  const roles=['DIST','SAC','AUXSAC','ALMACEN','ADMIN'];
+  const roles=['DIST','SAC','IT','AUXSAC','ALMACEN','ADMIN'];
   f.innerHTML=`<h3>${u?'Editar usuario':'Nuevo usuario'}</h3>
     <div class="field"><label>Usuario (para entrar) <span class="req">*</span></label><input id="nu_user" value="${esc(u?u.usuario:'')}" ${u?'disabled':''} placeholder="ej. sanimax" autocapitalize="none"></div>
     <div class="field"><label>Nombre a mostrar <span class="req">*</span></label><input id="nu_name" value="${esc(u?u.nombre:'')}" placeholder="ej. SANIMAX"></div>
@@ -675,7 +677,7 @@ function renderIntList(main){
         <select id="fDist" onchange="renderTable()"><option value="">Todos los distribuidores</option>${dists.map(d=>`<option>${esc(d)}</option>`).join('')}</select>
         <select id="fEst" onchange="renderTable()"><option value="">Todos los estados</option>${Object.keys(ESTADOS).map(k=>`<option value="${k}">${ESTADOS[k]}</option>`).join('')}</select>
         <input id="fQ" placeholder="Buscar guía, obra, expediente…" oninput="renderTable()">
-        ${ME.role==='ADMIN'?`<button class="btn small" style="margin-left:auto" onclick="openNew()">+ Nueva recolección</button>`:''}
+        ${['ADMIN','SAC','AUXSAC'].includes(ME.role)?`<button class="btn small" style="margin-left:auto" onclick="openNew()">+ Nueva recolección</button>`:''}
       </div>
       <div class="tbl-wrap"><table><thead><tr>
         <th>Fecha</th><th>Hora</th><th>Distribuidor</th><th>Paquetería / Entregar a</th><th>No. guía</th><th>Proyectos</th><th>Saldo pend.</th><th>Docs</th><th>Estado</th>
@@ -971,6 +973,7 @@ async function submitForm(){
   const f=FORM; if(SAVING) return;
   if(f._isNew || can('fecha',f)){ const e=validate(); if(e){ toast(e); return; } }
   else if(ME.role==='SAC'){ if(!f.paq.trim()) { toast('Indica la paquetería o a quién se entrega el material.'); return; } }
+  if(f._isNew && ME.role!=='DIST') f.creadoPorNombre=ME.name;
   const prev=f._isNew?null:DB.find(r=>r.id===f.id);
   const id=f._isNew?newId():f.id;
   busy(true);
