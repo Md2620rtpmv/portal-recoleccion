@@ -538,7 +538,7 @@ function renderDist(main){
     </div>
     ${DTAB==='form' ? `
       <h2 class="section-title">Programar recolección</h2>
-      <p class="section-sub">Todos los campos son obligatorios, excepto el número de guía. Llena los datos del envío, elige fecha y hora y adjunta tus documentos.</p>
+      <p class="section-sub">Todos los campos son obligatorios, excepto el número de guía y los documentos. Llena los datos del envío, elige fecha y hora y adjunta tus documentos.</p>
       <div class="card" id="formCard"></div>`
     : `
       <h2 class="section-title">Mis recolecciones</h2>
@@ -973,7 +973,7 @@ function drawForm(){
     <div class="cal-label">FECHA RECOLECCION <span class="req">*</span></div>
     <div class="cal ${calRO?'readonly':''}" id="calRoot"></div>
 
-    <div class="cal-label" style="font-size:16px">Documentos <span class="req">*</span></div>
+    <div class="cal-label" style="font-size:16px">Documentos <span style="color:var(--ink-soft);font-weight:500;font-size:13px">(opcional)</span></div>
     ${!ro('archivos')?`
       <label class="drop" id="drop">
         <input type="file" multiple onchange="addFiles(this.files)">
@@ -1116,7 +1116,6 @@ function validate(){
   if(isFull(f.fecha)) return 'Ese día ya está lleno. Elige otro.';
   if(!f.hora) return 'Elige un horario de recolección.';
   if(takenSlots(f.fecha).includes(f.hora)) return 'Ese horario ya fue tomado por otro distribuidor. Elige otro.';
-  if(!f.archivos.length) return 'Adjunta al menos un documento.';
   return null;
 }
 let SAVING=false;
