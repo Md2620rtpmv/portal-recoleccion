@@ -920,7 +920,7 @@ async function depurarMes(mes){
 
 /* ================= FORMULARIO ================= */
 let FORM = null; // estado del formulario activo
-function blank(){ const t=new Date(); return {dist: ME.role==='DIST'?ME.name:'', distUid: ME.role==='DIST'?ME.uid:'', paq:'', guia:'', fecha:iso(t), hora:'', estado:'Pendiente', comentarios:'', saldo:'', saldoMonto:'', detalles:[], entrega:'', recibe:'', remision:null, proyectos:[{linea:'',exp:'',int:'',obra:''}], archivos:[], cal:{y:t.getFullYear(), m:t.getMonth()}}; }
+function blank(){ const t=new Date(); const f0=primerDiaDisponible(); const d0=fromIso(f0); return {dist: ME.role==='DIST'?ME.name:'', distUid: ME.role==='DIST'?ME.uid:'', paq:'', guia:'', fecha:f0, hora:'', estado:'Pendiente', comentarios:'', saldo:'', saldoMonto:'', detalles:[], entrega:'', recibe:'', remision:null, proyectos:[{linea:'',exp:'',int:'',obra:''}], archivos:[], cal:{y:d0.getFullYear(), m:d0.getMonth()}}; }
 
 function mountForm(host, rec){
   FORM = rec ? JSON.parse(JSON.stringify(rec)) : blank();
@@ -1041,8 +1041,12 @@ function takenSlots(dateIso){
   return [...new Set([...Object.keys(h).filter(k=>h[k]!==myId), ...local])];
 }
 function isFull(dateIso){ const n=takenSlots(dateIso).length; return n>=CUPO_DIARIO || n>=slotsFor(dateIso).length; }
-function isWorkday(d){ const t=new Date(); t.setHours(0,0,0,0); return d>=t && d.getDay()!==0 && d.getDay()!==6; }
+// Reglas de fecha: solo lunes a viernes y a partir de MAÑANA (nunca el mismo día)
+function hoy0(){ const t=new Date(); t.setHours(0,0,0,0); return t; }
+function esFinDeSemana(d){ return d.getDay()===0 || d.getDay()===6; }
+function isWorkday(d){ return d>hoy0() && !esFinDeSemana(d); }
 function isSelectable(d){ return isWorkday(d) && !isFull(iso(d)); }
+function primerDiaDisponible(){ const d=hoy0(); for(let i=0;i<90;i++){ d.setDate(d.getDate()+1); if(isSelectable(d)) return iso(d); } const x=hoy0(); x.setDate(x.getDate()+1); return iso(x); }
 
 function drawCal(){
   const f=FORM, root=document.getElementById('calRoot'); if(!root) return;
@@ -1051,6 +1055,7 @@ function drawCal(){
   let cells=''; for(let i=0;i<offset;i++) cells+=`<button class="day empty" disabled></button>`;
   for(let d=1;d<=nDays;d++){
     const dt=new Date(y,m,d), s=iso(dt), full=isWorkday(dt)&&isFull(s), ok=isWorkday(dt)&&!full;
+    // hoy, fines de semana y días pasados quedan deshabilitados
     const cls=['day', ok?'avail':'', full?'full':'', s===todayIso?'today':'', s===f.fecha?'sel':''].filter(Boolean).join(' ');
     cells+=`<button type="button" class="${cls}" ${ok?'':'disabled'} title="${full?'Día no disponible':''}" onclick="pickDate('${s}')">${d}</button>`;
   }
@@ -1073,7 +1078,9 @@ function drawCal(){
         <div class="nav"><button type="button" onclick="stepDay(-1)" aria-label="Día anterior"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button><button type="button" onclick="stepDay(1)" aria-label="Día siguiente"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button></div></div>
       ${selOk? `<div class="slots">${slots.map(s=>`<button type="button" class="slot ${s===f.hora?'sel':''}" ${taken.includes(s)?'disabled':''} title="${taken.includes(s)?'Horario no disponible':''}" onclick="FORM.hora='${s}';drawCal()">${fmt12(s)}</button>`).join('')}</div>`
              : selFull ? `<div class="empty" style="color:#8a2318"><b>Día no disponible.</b> Elige otro día.</div>`
-             : `<div class="empty">Sin horarios: los sábados y domingos no hay recolección. Elige un día hábil (lunes a viernes).</div>`}
+             : esFinDeSemana(selD) ? `<div class="empty">Sin horarios: los sábados y domingos no hay recolección. Elige un día hábil (lunes a viernes).</div>`
+             : selD<=hoy0() ? `<div class="empty"><b>No se puede programar para el mismo día.</b> Las recolecciones se agendan a partir de mañana; el primer día disponible es ${esc(fmtDMY(primerDiaDisponible()))}. <button type="button" class="btn ghost small" onclick="pickDate('${primerDiaDisponible()}');FORM.cal={y:fromIso(FORM.fecha).getFullYear(),m:fromIso(FORM.fecha).getMonth()};drawCal()">Ir al primer día disponible</button></div>`
+             : `<div class="empty">Sin horarios disponibles este día.</div>`}
       <div class="legend"><span class="l-av">Disponible</span><span class="l-full">No disponible</span><span class="l-sel">Seleccionado</span></div>
       <div class="tz"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>America/Mexico_City (<span id="clock"></span>)</span> 🔒</div>
     </div>`;
@@ -1092,7 +1099,8 @@ function validate(){
   if(!f.distUid) return 'Selecciona el distribuidor.';
   if(!f.paq.trim()) return 'Indica la paquetería o a quién se entrega el material.';
   if(!f.proyectos.length || f.proyectos.some(p=>!p.linea.trim()||!p.exp.trim()||!p.int.trim()||!p.obra.trim())) return 'Completa todos los datos de cada proyecto: línea, Exp, Int y nombre de obra.';
-  if(!isWorkday(fromIso(f.fecha))) return 'Elige un día hábil a partir de hoy.';
+  if(esFinDeSemana(fromIso(f.fecha))) return 'Los sábados y domingos no hay recolección. Elige un día de lunes a viernes.';
+  if(fromIso(f.fecha)<=hoy0()) return 'No se puede programar para el mismo día. Elige a partir de mañana.';
   if(isFull(f.fecha)) return 'Ese día ya está lleno. Elige otro.';
   if(!f.hora) return 'Elige un horario de recolección.';
   if(takenSlots(f.fecha).includes(f.hora)) return 'Ese horario ya fue tomado por otro distribuidor. Elige otro.';
