@@ -455,6 +455,7 @@ async function abrirArchivo(path){
 }
 async function nextFolio(){ const {data,error}=await sb.rpc('siguiente_folio'); if(error||!data) throw (error||new Error('Sin permiso para generar folio')); return data; }
 function errMsg(e){ console.error(e); const m=(e&&(e.message||e.error_description))||String(e);
+  if(/recolección\(es\) ligadas|propio usuario|no encontrado|al menos 6/i.test(m)) return m;
   if(/row-level security|permission|Sin permiso|no puede/i.test(m)) return 'Sin permiso: '+m.replace(/^.*?(Sin permiso|SAC|Almacén|Solo|No puedes|Indica|Para)/,'$1');
   if(/Bucket not found|storage/i.test(m)) return 'No se pudo subir el archivo. Revisa el bucket "documentos" y sus políticas.';
   if(/Failed to fetch|NetworkError/i.test(m)) return 'Sin conexión. Revisa tu internet.';
@@ -585,7 +586,7 @@ function renderUsers(host){
       <div class="tbl-wrap"><table><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Correo de contacto</th><th>Estado</th><th></th></tr></thead><tbody>
       ${list.map(u=>`<tr><td><b>${esc(u.usuario||'')}</b></td><td>${esc(u.nombre)}</td><td><span class="tag role-${(u.rol||'').toLowerCase()}">${esc(u.rol)}</span></td><td>${esc(u.correo||'')}</td>
         <td>${u.activo===false?'<span class="st Cancelado">Desactivado</span>':'<span class="st OK">Activo</span>'}</td>
-        <td style="white-space:nowrap">${(u.rol==='ADMIN'&&ME.role!=='ADMIN')?'':`<button class="btn ghost small" onclick="editUser('${u.uid}')">Editar</button>`} ${u.uid!==ME.uid&&!(u.rol==='ADMIN'&&ME.role!=='ADMIN')?`<button class="btn ghost small" onclick="toggleUser('${u.uid}',${u.activo===false})">${u.activo===false?'Activar':'Desactivar'}</button>`:''}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Sin usuarios.</td></tr>'}
+        <td style="white-space:nowrap">${(u.rol==='ADMIN'&&ME.role!=='ADMIN')?'':`<button class="btn ghost small" onclick="editUser('${u.uid}')">Editar</button> <button class="btn ghost small" onclick="resetPassword('${u.uid}','${esc(u.usuario||'')}')">Contraseña</button>`} ${u.uid!==ME.uid&&!(u.rol==='ADMIN'&&ME.role!=='ADMIN')?`<button class="btn ghost small" onclick="toggleUser('${u.uid}',${u.activo===false})">${u.activo===false?'Activar':'Desactivar'}</button> <button class="btn ghost small" style="border-color:var(--danger);color:var(--danger)" onclick="deleteUser('${u.uid}','${esc(u.usuario||'')}')">Eliminar</button>`:''}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Sin usuarios.</td></tr>'}
       </tbody></table></div>
     </div>
     <aside class="side"><div class="card" id="userForm"></div></aside></div>`;
@@ -601,7 +602,7 @@ function drawUserForm(u){
     <div class="field"><label>Correo de contacto <span style="color:var(--ink-soft);font-weight:500">(aparece en la remisión)</span></label><input id="nu_mail" type="email" value="${esc(u?u.correo||'':'')}" placeholder="correo@distribuidor.com"></div>
     ${u?'':`<div class="field"><label>Contraseña inicial <span class="req">*</span></label><input id="nu_pass" type="text" placeholder="mínimo 6 caracteres"></div>`}
     <div class="btn-row"><button class="btn" onclick="${u?`saveUser('${u.uid}')`:'createUser()'}">${u?'Guardar':'Crear usuario'}</button>${u?`<button class="btn ghost" onclick="drawUserForm(null)">Cancelar</button>`:''}</div>
-    ${u?'':'<p class="hint" style="font-size:12px;color:var(--ink-soft);margin:10px 0 0">Entrega el usuario y la contraseña al distribuidor. Podrá cambiarla después desde su sesión.</p>'}`;
+    ${u?'':'<p class="hint" style="font-size:12px;color:var(--ink-soft);margin:10px 0 0">Entrega el usuario y la contraseña al distribuidor. Podrá cambiarla después desde su sesión. Si la olvida, usa el botón "Contraseña" de la lista para asignarle una nueva.</p>'}`;
 }
 function editUser(uid){ drawUserForm(USERS.find(x=>x.uid===uid)); }
 async function createUser(){
@@ -629,6 +630,17 @@ async function saveUser(uid){
 async function toggleUser(uid, activar){
   if(!activar && !confirm('¿Desactivar este usuario? Ya no podrá entrar al portal.')) return;
   try{ const {error}=await sb.from('perfiles').update({activo:activar}).eq('id',uid); if(error) throw error; toast(activar?'Usuario activado':'Usuario desactivado'); await cargarUsuarios(); render(); }catch(e){ toast(errMsg(e)); }
+}
+async function resetPassword(uid, usuario){
+  const p1=prompt(`Nueva contraseña para "${usuario}" (mínimo 6 caracteres):`); if(p1===null) return;
+  if(p1.length<6){ toast('Mínimo 6 caracteres.'); return; }
+  try{ const {error}=await sb.rpc('admin_reset_password',{uid, nueva:p1}); if(error) throw error; toast(`Contraseña de ${usuario} restablecida. Entrégasela al usuario.`); }
+  catch(e){ toast(errMsg(e)); }
+}
+async function deleteUser(uid, usuario){
+  if(!confirm(`¿Eliminar definitivamente el usuario "${usuario}"? Ya no podrá entrar y no se puede deshacer.\n\nSi tiene recolecciones registradas, el sistema no lo permitirá: usa "Desactivar" para conservar el historial.`)) return;
+  try{ const {error}=await sb.rpc('admin_eliminar_usuario',{uid}); if(error) throw error; toast(`Usuario ${usuario} eliminado`); await cargarUsuarios(); render(); }
+  catch(e){ toast(errMsg(e)); }
 }
 async function cambiarPassword(){
   const p1=prompt('Nueva contraseña (mínimo 6 caracteres):'); if(!p1) return; if(p1.length<6){ toast('Mínimo 6 caracteres.'); return; }
