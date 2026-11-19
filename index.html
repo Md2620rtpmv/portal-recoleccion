@@ -151,9 +151,9 @@ input,select,textarea{font:inherit;color:var(--ink)}
 .stepper{display:flex;flex-direction:column}
 .stepper button{all:unset;cursor:pointer;line-height:1;padding:2px 4px;color:var(--navy)}
 .stepper svg{width:18px;height:18px;stroke:var(--navy);fill:none;stroke-width:2.2;display:block}
-.dow{display:grid;grid-template-columns:repeat(7,1fr);background:var(--muted);padding:12px 4px;font-size:13px;font-weight:700;color:var(--navy);text-align:center}
-.days{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;padding:14px 10px 14px}
-.day{all:unset;box-sizing:border-box;cursor:pointer;height:60px;display:grid;place-items:center;border-radius:4px;font-size:18px;color:var(--ink-soft)}
+.dow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));background:var(--muted);padding:12px 4px;font-size:13px;font-weight:700;color:var(--navy);text-align:center}
+.days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;padding:12px 8px}
+.day{all:unset;box-sizing:border-box;cursor:pointer;height:56px;min-width:0;width:100%;display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:18px;color:var(--ink-soft)}
 .day.avail{background:var(--muted);color:var(--navy)}
 .day.today{outline:1.5px solid var(--navy);outline-offset:-1.5px;background:var(--panel)}
 .day.sel{background:var(--navy-deep);color:#fff;font-weight:600}
@@ -249,7 +249,8 @@ tr.row.con-saldo:hover td{background:rgba(246,195,67,.3)}
 .item.next{border-color:#e2b94a;background:#fbf0cf}
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .item.next{background:#3a3115;border-color:#b98e2a}}
 :root[data-theme="dark"] .item.next{background:#3a3115;border-color:#b98e2a}
-.mcal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.mcal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.mcell{min-width:0}
 .mcal .mh{font-size:12px;font-weight:700;color:var(--navy);text-align:center;padding:6px 0}
 .mcell{all:unset;box-sizing:border-box;cursor:pointer;min-height:82px;border:1.5px solid var(--line-soft);border-radius:8px;padding:8px;background:var(--panel-2);display:flex;flex-direction:column;gap:4px}
 .mcell:hover{border-color:var(--navy)}
@@ -368,7 +369,7 @@ const ROLE_LABEL = {ADMIN:'Admin · edita todo', SAC:'SAC · confirma y edita re
 const ESTADOS = {Pendiente:'Pendiente confirmar', Aceptado:'Aceptado', OK:'OK', Cancelado:'Cancelado', NoLlego:'No llegó'};
 const CERRADOS = ['OK','Cancelado','NoLlego'];      // estados finales
 const ACTIVOS = ['Pendiente','Aceptado'];           // estados que ocupan horario
-const CUPO_DIARIO = 6;                               // recolecciones máximas por día (ajustable)
+const CUPO_DIARIO = 34;                              // recolecciones máximas por día = todos los horarios (8:00 a 4:15 cada 15 min). Bajar el número si se quiere un tope menor.
 function estLabel(e){ return ESTADOS[e]||e; }
 function saldoTxt(r){ return r.saldo==='si' ? 'Saldo pendiente'+(r.saldoMonto?' · $'+Number(r.saldoMonto).toLocaleString('es-MX',{minimumFractionDigits:2}):'') : ''; }
 function saldoBadge(r){ return r.saldo==='si' ? `<span class="saldo" title="Este distribuidor tiene saldo pendiente">💰 ${esc(saldoTxt(r))}</span>` : ''; }
