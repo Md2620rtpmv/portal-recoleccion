@@ -1132,23 +1132,27 @@ function stepYear(n){ FORM.cal.y+=n; drawCal(); }
 function stepDay(n){ const d=fromIso(FORM.fecha); do{ d.setDate(d.getDate()+n); }while(esFinDeSemana(d)); FORM.fecha=iso(d); FORM.hora=''; FORM.cal={y:d.getFullYear(),m:d.getMonth()}; drawCal(); }
 
 /* ================= GUARDAR / MODAL ================= */
-function validate(){
+function validate(fechaCambio=true){
   const f=FORM;
   if(!f.distUid) return 'Selecciona el distribuidor.';
   if(!f.paq.trim()) return 'Indica la paquetería o a quién se entrega el material.';
   if(!f.proyectos.length || f.proyectos.some(p=>!p.linea.trim()||!p.exp.trim()||!p.int.trim()||!p.obra.trim())) return 'Completa todos los datos de cada proyecto: línea, Exp, Int y nombre de obra.';
-  if(esFinDeSemana(fromIso(f.fecha))) return 'Los sábados y domingos no hay recolección. Elige un día de lunes a viernes.';
-  if(fromIso(f.fecha)<=hoy0()) return 'No se puede programar para el mismo día. Elige a partir de mañana.';
-  if(isFull(f.fecha)) return 'Ese día ya está lleno. Elige otro.';
   if(!f.hora) return 'Elige un horario de recolección.';
-  if(takenSlots(f.fecha).includes(f.hora)) return 'Ese horario ya fue tomado por otro distribuidor. Elige otro.';
+  if(fechaCambio){ // las reglas de fecha solo aplican al programar o al mover la fecha/hora
+    if(esFinDeSemana(fromIso(f.fecha))) return 'Los sábados y domingos no hay recolección. Elige un día de lunes a viernes.';
+    if(fromIso(f.fecha)<=hoy0()) return 'No se puede programar para el mismo día. Elige a partir de mañana.';
+    if(isFull(f.fecha)) return 'Ese día ya está lleno. Elige otro.';
+    if(takenSlots(f.fecha).includes(f.hora)) return 'Ese horario ya fue tomado por otro distribuidor. Elige otro.';
+  }
   return null;
 }
 let SAVING=false;
 function busy(on){ SAVING=on; document.querySelectorAll('.modal .btn, #formCard .btn').forEach(b=>b.disabled=on); }
 async function submitForm(){
   const f=FORM; if(SAVING) return;
-  if(f._isNew || can('fecha',f)){ const e=validate(); if(e){ toast(e); return; } }
+  const prev0=f._isNew?null:DB.find(r=>r.id===f.id);
+  const fechaCambio = f._isNew || !prev0 || prev0.fecha!==f.fecha || prev0.hora!==f.hora;
+  if(f._isNew || can('fecha',f)){ const e=validate(fechaCambio); if(e){ toast(e); return; } }
   else if(ME.role==='SAC'){ if(!f.paq.trim()) { toast('Indica la paquetería o a quién se entrega el material.'); return; } }
   if(f._isNew && ME.role!=='DIST') f.creadoPorNombre=ME.name;
   const prev=f._isNew?null:DB.find(r=>r.id===f.id);
