@@ -313,7 +313,20 @@ tr.row.con-saldo:hover td{background:rgba(246,195,67,.3)}
 .rem-actions .btn{min-height:42px}
 .rem-actions .hint{font-size:13px;color:var(--ink-soft)}
 @media (max-width:640px){.rem{padding:22px 16px 40px}.rem .signs{grid-template-columns:1fr;gap:26px}.rem td.k{width:38%}}
-@media print{body{background:#fff}.rem-bg{position:static;padding:0;background:#fff}.rem{box-shadow:none;max-width:none;padding:10px 0}.rem-actions,#app,#login{display:none!important}.rem .sig canvas{border:none;background:transparent}.rem .sig .cl{display:none}}
+@media print{
+  @page{size:letter portrait;margin:12mm}
+  html,body{background:#fff!important;height:auto!important;overflow:visible!important}
+  /* solo se imprime la remisión: se oculta el portal, el formulario abierto y los avisos */
+  #app,#login,#toastRoot,.modal-bg,.rem-actions{display:none!important}
+  #modalRoot{display:block!important}
+  .rem-bg{position:static!important;inset:auto;padding:0!important;background:#fff!important;overflow:visible!important}
+  .rem{box-shadow:none!important;max-width:none!important;width:100%!important;padding:0!important;border-radius:0!important;color:#1f2937!important}
+  .rem table{page-break-inside:auto}.rem tr{page-break-inside:avoid}
+  .rem .signs{page-break-inside:avoid}
+  .rem .sig canvas{border:none!important;background:transparent!important}
+  .rem .sig .cl{display:none!important}
+  .rem .logo img{width:220px!important}
+}
 .rem-badge{display:inline-flex;gap:6px;align-items:center;background:#d6efe0;color:#0f3d24;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:600}
 
 /* ---------- almacenamiento ---------- */
